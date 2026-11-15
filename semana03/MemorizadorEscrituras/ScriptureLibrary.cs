@@ -1,64 +1,76 @@
-using System.Linq;
-using System.Text;
+using System;
+using System.Collections.Generic;
+using System.IO;
 
 namespace ScriptureMemorizer
 {
     /// <summary>
-    /// Representa uma palavra da escritura, que pode estar oculta ou visível.
-    /// A pontuação colada à palavra (vírgulas, pontos...) continua sempre visível.
+    /// Biblioteca de escrituras carregada de um arquivo de texto.
+    /// Formato de cada linha:  Referência|Texto   (linhas começando com # são comentários)
     /// </summary>
-    public class Word
+    public class ScriptureLibrary
     {
-        private readonly string _text;
-        private bool _isHidden;
+        private readonly List<(Reference Reference, string Text)> _entries = new();
+        private readonly Random _random = new Random();
+        private int _lastIndex = -1;
 
-        public Word(string text)
+        public int Count => _entries.Count;
+
+        /// <summary>Carrega escrituras do arquivo. Linhas inválidas são ignoradas.</summary>
+        public void LoadFromFile(string path)
         {
-            _text = text;
-            _isHidden = false;
+            foreach (string line in File.ReadLines(path))
+            {
+                if (string.IsNullOrWhiteSpace(line) || line.TrimStart().StartsWith('#'))
+                {
+                    continue;
+                }
+
+                string[] parts = line.Split('|', 2);
+                if (parts.Length != 2)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    _entries.Add((Reference.Parse(parts[0]), parts[1].Trim()));
+                }
+                catch (FormatException)
+                {
+                    // Linha mal formatada: ignora e segue.
+                }
+            }
         }
 
-        public bool IsHidden => _isHidden;
-
-        /// <summary>Palavras formadas só por pontuação (ex.: "—") não contam como palavras.</summary>
-        public bool HasLetters => _text.Any(char.IsLetterOrDigit);
-
-        public void Hide() => _isHidden = true;
-
-        public void Show() => _isHidden = false;
-
-        /// <summary>
-        /// Retorna o texto a ser exibido. Se oculta, troca letras por "_".
-        /// Com a dica ligada, a primeira letra continua visível.
-        /// </summary>
-        public string GetDisplayText(bool showFirstLetterHint)
+        /// <summary>Adiciona escrituras padrão, usadas caso o arquivo não exista.</summary>
+        public void AddDefaults()
         {
-            if (!_isHidden)
+            _entries.Add((new Reference("João", 3, 16),
+                "Porque Deus amou o mundo de tal maneira que deu o seu Filho unigênito, " +
+                "para que todo aquele que nele crê não pereça, mas tenha a vida eterna."));
+            _entries.Add((new Reference("Provérbios", 3, 5, 6),
+                "Confia no Senhor de todo o teu coração e não te estribes no teu próprio entendimento. " +
+                "Reconhece-o em todos os teus caminhos, e ele endireitará as tuas veredas."));
+        }
+
+        /// <summary>Sorteia uma escritura, evitando repetir a anterior quando possível.</summary>
+        public Scripture GetRandomScripture()
+        {
+            if (_entries.Count == 0)
             {
-                return _text;
+                throw new InvalidOperationException("A biblioteca está vazia.");
             }
 
-            var result = new StringBuilder();
-            bool firstLetterPending = showFirstLetterHint;
-
-            foreach (char c in _text)
+            int index;
+            do
             {
-                if (!char.IsLetterOrDigit(c))
-                {
-                    result.Append(c);
-                }
-                else if (firstLetterPending)
-                {
-                    result.Append(c);
-                    firstLetterPending = false;
-                }
-                else
-                {
-                    result.Append('_');
-                }
-            }
+                index = _random.Next(_entries.Count);
+            } while (_entries.Count > 1 && index == _lastIndex);
 
-            return result.ToString();
+            _lastIndex = index;
+            var entry = _entries[index];
+            return new Scripture(entry.Reference, entry.Text);
         }
     }
 }
